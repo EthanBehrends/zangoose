@@ -79,10 +79,20 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 		);
 
 		mongooseSchema.pre("validate", function (next) {
-			console.log("validating");
 			const doc = schema.parse(this);
 			this.set(doc);
 			next();
+		});
+
+		mongooseSchema.pre("init", function () {
+			const result = schema.safeParse(this);
+
+			if (!result.success) {
+				console.warn(
+					"WARNING: Stored document failed to parse - you need a migration"
+				);
+				console.warn(result.error);
+			}
 		});
 
 		if (input.virtuals) {
@@ -153,7 +163,9 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 			});
 		}
 
-		mongoose.deleteModel(input.collection);
+		try {
+			mongoose.deleteModel(input.collection);
+		} catch {}
 
 		type NewDocType = HydratedDocument<
 			z.infer<T>,

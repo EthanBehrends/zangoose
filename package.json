@@ -24,7 +24,8 @@
     "vitest": "^0.34.6"
   },
   "dependencies": {
-		"mongoose": "^7.5.2",
+    "mongodb-memory-server": "^9.1.1",
+    "mongoose": "^7.5.2",
     "zod": "^3.22.4"
   }
 }
