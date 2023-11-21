@@ -1,9 +1,20 @@
 {
   "name": "zangoose",
-  "version": "0.5.0",
-  "description": "Use Zod to define perfectly typesafe Mongoose schemas",
-  "main": "index.js",
   "type": "module",
+  "description": "Use Zod to define perfectly typesafe Mongoose schemas",
+  "version": "0.5.0",
+  "author": "Ethan Behrends <epbehrends@gmail.com>",
+  "license": "ISC",
+  "main": "index.js",
+  "keywords": [
+    "mongoose",
+    "mongodb",
+    "mongo",
+    "validation",
+    "zod",
+    "typescript",
+    "ts"
+  ],
   "scripts": {
     "test": "vitest",
     "lint": "tsc",
@@ -14,8 +25,6 @@
     "dev:esbuild": "pnpm run build --watch",
     "dev": "run-p dev:*"
   },
-  "author": "Ethan Behrends",
-  "license": "ISC",
   "devDependencies": {
     "@types/node": "^20.8.10",
     "esbuild": "^0.19.5",
