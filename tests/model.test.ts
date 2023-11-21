@@ -1,80 +1,100 @@
-import { assertType, expect, expectTypeOf, test, vi } from "vitest";
+import { assertType, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { model } from "../src/modelDef";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { zObjectId } from "../src/types/mongo";
 import assert from "node:assert";
 
-const userSchema = z.object({
-	firstName: z.string(),
-	lastName: z.string().optional(),
-	email: z.string(),
-	auth: z
-		.object({
-			hash: z.string(),
-			salt: z.string(),
-		})
-		.optional(),
-	history: z.array(
-		z.object({
-			date: z.date(),
-			action: z.enum([
-				"login",
-				"logout",
-				"signup",
-				"delete",
-				"update",
-				"changePassword",
-			]),
-		})
-	),
-	friends: z.array(zObjectId()).default([]),
-});
+const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-test("model definitions", async () => {
-	const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+const zStatus = z.enum(["invited", "active", "deleted"]);
 
-	const User = model(userSchema).with({
-		collection: "users",
-		statics: {
-			async findByEmail(email: string) {
-				return this.findOne({ email });
+const User = model(
+	z.object({
+		firstName: z.string(),
+		lastName: z.string().optional(),
+		email: z.string(),
+		auth: z
+			.object({
+				hash: z.string(),
+				salt: z.string(),
+			})
+			.optional(),
+		_status: zStatus.default("active"),
+		history: z.array(
+			z.object({
+				date: z.date(),
+				action: z.enum([
+					"login",
+					"logout",
+					"signup",
+					"update",
+					"statusChange",
+					"changePassword",
+				]),
+			})
+		),
+		friends: z.array(zObjectId()).default([]),
+	})
+).with({
+	collection: "users",
+	statics: {
+		async findByEmail(email: string) {
+			return this.findOne({ email });
+		},
+		async list(page: number) {
+			return this.find()
+				.skip(page * 50)
+				.limit(50);
+		},
+	},
+	methods: {
+		async verifyPassword(password: string) {
+			return !!(this.auth && this.auth.hash === password + this.auth.salt);
+		},
+		setPassword(password: string) {
+			const salt = crypto.randomBytes(30).toString("hex");
+			const hash = password + salt;
+			this.auth = { hash, salt };
+		},
+	},
+	indexes: [
+		[{ email: 1 }, { unique: true }],
+		{ firstName: 1 },
+		{ "auth.hash": 1 },
+		{ "history.action": 1 },
+	],
+	pre: {
+		save() {
+			this.history.push({
+				date: new Date(),
+				action: "update",
+			});
+		},
+	},
+	virtuals: {
+		fullName: {
+			get() {
+				if (!this.lastName) return this.firstName;
+				return `${this.firstName} ${this.lastName}`;
 			},
 		},
-		methods: {
-			async verifyPassword(password: string) {
-				return this.auth && this.auth.hash === password + this.auth.salt;
+		status: {
+			get() {
+				return this._status;
 			},
-			setPassword(password: string) {
-				const salt = crypto.randomBytes(30).toString("hex");
-				const hash = password + salt;
-				this.auth = { hash, salt };
-			},
-		},
-		indexes: [
-			[{ email: 1 }, { unique: true }],
-			{ firstName: 1 },
-			{ "auth.hash": 1 },
-			{ "history.action": 1 },
-		],
-		pre: {
-			save() {
+			set(status: z.TypeOf<typeof zStatus>) {
+				this._status = status;
 				this.history.push({
 					date: new Date(),
-					action: "update",
+					action: "statusChange",
 				});
 			},
 		},
-		virtuals: {
-			fullName: {
-				get() {
-					if (!this.lastName) return this.firstName;
-					return `${this.firstName} ${this.lastName}`;
-				},
-			},
-		},
-	});
+	},
+});
 
+describe("Typesafety", async () => {
 	const user = new User({
 		firstName: "John",
 		lastName: "Doe",
@@ -82,54 +102,92 @@ test("model definitions", async () => {
 		history: [],
 	});
 
-	expectTypeOf(user).toMatchTypeOf<{ readonly fullName: string }>();
+	test("Virtuals without setters are readonly", () => {
+		expectTypeOf(user).toMatchTypeOf<{ readonly fullName: string }>();
 
-	try {
-		// @ts-expect-error Cannot assign to readonly value
-		user.fullName = "Readonly";
-	} catch {}
+		try {
+			// @ts-expect-error Cannot assign to readonly value
+			user.fullName = "Readonly";
 
-	expectTypeOf(user).toMatchTypeOf<{
-		auth?: { hash: string; salt: string };
-	}>();
+			user.status = "active";
+		} catch {}
+	});
 
-	user.setPassword("password");
+	test("Methods are defined", () => {
+		expectTypeOf(user.verifyPassword).toMatchTypeOf<Function>();
+		expectTypeOf(user.verifyPassword).toMatchTypeOf<
+			(password: string) => Promise<Boolean>
+		>();
+	});
 
-	await expect(user.verifyPassword("123456")).resolves.toBe(false);
-	await expect(user.verifyPassword("password")).resolves.toBe(true);
+	test("Static methods map to the hydrated type", async () => {
+		expectTypeOf(User.findByEmail).toMatchTypeOf<Function>();
+		expectTypeOf(User.findByEmail).toMatchTypeOf<
+			(email: string) => Promise<typeof user | null>
+		>();
+		expectTypeOf(User.list).toMatchTypeOf<
+			(number: number) => Promise<(typeof user)[]>
+		>();
+	});
+});
 
-	await user.save();
+describe("Schema construction", async () => {
+	const user = new User({
+		firstName: "John",
+		lastName: "Doe",
+		email: "john.doe@example.com",
+		history: [],
+	});
 
-	expect(user.history).toHaveLength(1);
+	test("Method definitions", async () => {
+		user.setPassword("password");
 
-	const user2 = await User.findByEmail("john.doe@example.com");
+		await expect(user.verifyPassword("123456")).resolves.toBe(false);
+		await expect(user.verifyPassword("password")).resolves.toBe(true);
+	});
 
-	assert(user2);
+	describe("Hooks", () => {
+		test("Pre hooks", async () => {
+			const historyLength = user.history.length;
 
-	//@ts-expect-error cannot delete property
-	delete user2.history;
+			await user.save();
 
-	await expect(async () => {
-		await user2.validate();
-	}).rejects.toThrow();
-
-	await expect(async () => {
-		// todo: typechecking
-		await User.create({
-			firstName: "Sally",
-			lastName: "Tester",
+			expect(user.history).toHaveLength(historyLength + 1);
 		});
-	}).rejects.toThrow();
+		test("Zod validation", async () => {
+			const user = new User({
+				firstName: "John",
+				lastName: "Doe",
+				email: "john.doe@example.com",
+				history: [],
+			});
 
-	await User.updateOne(
-		{ email: "sally@example.com" },
-		{ firstName: "Sally" },
-		{ upsert: true }
-	);
+			//@ts-expect-error cannot delete property
+			delete user.history;
 
-	const calls = consoleSpy.mock.calls.length;
+			await expect(async () => {
+				await user.validate();
+			}).rejects.toThrow();
 
-	await User.findByEmail("sally@example.com");
+			await expect(async () => {
+				// todo: typechecking
+				await User.create({
+					firstName: "Sally",
+					lastName: "Tester",
+				});
+			}).rejects.toThrow();
 
-	expect(consoleSpy.mock.calls.length).toBeGreaterThan(calls);
+			await User.updateOne(
+				{ email: "sally@example.com" },
+				{ firstName: "Sally" },
+				{ upsert: true }
+			);
+
+			const calls = consoleSpy.mock.calls.length;
+
+			await User.findByEmail("sally@example.com");
+
+			expect(consoleSpy.mock.calls.length).toBeGreaterThan(calls);
+		});
+	});
 });

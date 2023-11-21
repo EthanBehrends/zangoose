@@ -22,10 +22,10 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 
 	type VirtualDef =
 		| {
-				get: (this: Document) => unknown;
-				set?: (this: Document, value: unknown) => void;
+				get: (this: Document) => any;
+				set?: (this: Document, value: any) => void;
 		  }
-		| ((this: Document) => unknown);
+		| ((this: Document) => any);
 
 	type Input<
 		Statics extends Record<string, (this: NormalModel, ...rest: any[]) => any>,
@@ -174,9 +174,17 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 		type Methods = {
 			[K in keyof I["methods"]]: (
 				this: NewDocType,
-				...args: Parameters<I["methods"][K]>
-			) => ReturnType<I["methods"][K]>;
+				...args: Parameters<M[K]>
+			) => ReturnType<M[K]>;
 		};
+		// type Methods = {
+		// 	[K in keyof I["methods"]]: (
+		// 		this: NewDocType,
+		// 		...args: Parameters<I["methods"][K]>
+		// 	) => ReturnType<I["methods"][K]>;
+		// };
+
+		type test = M[string];
 
 		type NewModel_ = Model<
 			z.input<T>,
