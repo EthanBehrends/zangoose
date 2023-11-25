@@ -131,6 +131,66 @@ describe("Typesafety", async () => {
 			(number: number) => Promise<(typeof user)[]>
 		>();
 	});
+
+	test("Non-enhanced models typed correctly", () => {
+		const UnenhancedUser = model(
+			"UnenhancedUser",
+			z.object({
+				firstName: z.string(),
+				lastName: z.string().optional(),
+				email: z.string(),
+				auth: z
+					.object({
+						hash: z.string(),
+						salt: z.string(),
+					})
+					.optional(),
+				_status: zStatus.default("active"),
+				history: z.array(
+					z.object({
+						date: z.date(),
+						action: z.enum([
+							"login",
+							"logout",
+							"signup",
+							"update",
+							"statusChange",
+							"changePassword",
+						]),
+					})
+				),
+				friends: z.array(zObjectId()).default([]),
+			})
+		);
+
+		const user = new UnenhancedUser({
+			firstName: "John",
+			lastName: "Doe",
+			email: "john.doe@example.com",
+			history: [],
+		});
+
+		user.lastName;
+
+		expectTypeOf(user).toMatchTypeOf<{
+			firstName: string;
+		}>();
+
+		expectTypeOf(user.lastName).toMatchTypeOf<string | undefined>();
+
+		expectTypeOf(user.history).toMatchTypeOf<
+			{
+				date: Date;
+				action:
+					| "login"
+					| "logout"
+					| "signup"
+					| "update"
+					| "statusChange"
+					| "changePassword";
+			}[]
+		>();
+	});
 });
 
 describe("Schema construction", async () => {
