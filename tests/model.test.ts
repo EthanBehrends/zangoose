@@ -4,12 +4,14 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import { zObjectId } from "../src/types/mongo";
 import assert from "node:assert";
+import mongoose from "mongoose";
 
 const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 const zStatus = z.enum(["invited", "active", "deleted"]);
 
 const User = model(
+	"User",
 	z.object({
 		firstName: z.string(),
 		lastName: z.string().optional(),
@@ -189,5 +191,37 @@ describe("Schema construction", async () => {
 
 			expect(consoleSpy.mock.calls.length).toBeGreaterThan(calls);
 		});
+	});
+
+	test("zObjectId", async () => {
+		const Person = model(
+			"Person",
+			z.object({
+				name: z.string(),
+			})
+		).with({
+			collection: "person",
+			methods: {},
+			virtuals: {},
+		});
+
+		const BlogPost = model(
+			"BlogPost",
+			z.object({
+				title: z.string(),
+				description: z.string(),
+				commenters: zObjectId().array(),
+			})
+		).with({
+			collection: "blog-post",
+		});
+
+		const post = await BlogPost.findOne();
+
+		if (post) {
+			post.title;
+			post.commenters;
+			const commenters = await Person.find({ _id: { $in: post.commenters } });
+		}
 	});
 });

@@ -64,19 +64,17 @@ Zangoose does not currently provide support for Mongoose's `populate`. Instead, 
 
 ```typescript
 // Old
-const schema = mongoose.Schema({
+const Person = mongoose.Model("Person", mongoose.Schema({
     name: { type: string },
     friends: { type: mongoose.ObjectId, ref: 'Person' }
-})
+}))
 
-const Person = mongoose.Model("Person", schema)
-
-const person = await Person.findOne().populate('friends') // person.Friends is not typesafe
+const person = await Person.findOne().populate('friends') // person.friends is not typesafe
 
 
 
 // With Zangoose
-const Person = model({
+const Person = model("Person", {
     name: z.string(),
     friends: zObjectId().array()
 })

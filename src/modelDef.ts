@@ -11,12 +11,46 @@ import type {
 } from "./middlewareDefinitions";
 import assert from "node:assert";
 
-export function model<T extends z.ZodTypeAny>(schema: T) {
-	return { with: enhanceModel(schema) };
+export function model<T extends z.ZodTypeAny>(modelName: string, schema: T) {
+	const mongooseSchema = new mongoose.Schema<T["_output"]>(
+		{},
+		{ strict: false }
+	);
+
+	mongooseSchema.pre("validate", function (next) {
+		const doc = schema.parse(this);
+		this.set(doc);
+		next();
+	});
+
+	mongooseSchema.pre("init", function () {
+		const result = schema.safeParse(this);
+
+		if (!result.success) {
+			console.warn(
+				"WARNING: Stored document failed to parse - you need a migration"
+			);
+			console.warn(result.error);
+		}
+	});
+
+	type DocType = z.infer<T>;
+	type Document = HydratedDocument<DocType>;
+	type UnenhancedModel = Model<z.input<T>, object, object, object, Document>;
+
+	const model = mongoose.model(modelName, mongooseSchema) as UnenhancedModel;
+
+	return Object.assign(model, {
+		with: enhanceModel(modelName, schema, mongooseSchema),
+	});
 }
 
-function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
-	type DocType = z.infer<T>;
+function enhanceModel<T extends z.ZodTypeAny, S extends mongoose.Schema<T>>(
+	modelName: string,
+	schema: T,
+	mongooseSchema: S
+) {
+	type DocType = z.infer<typeof schema>;
 	type Document = HydratedDocument<DocType>;
 	type NormalModel = Model<z.input<T>, object, object, object, Document>;
 
@@ -70,30 +104,9 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 				? R
 				: V[K];
 		};
-		type CompiledVirtuals = Pick<MutableVirtuals, MutableKeys> &
-			ReadonlyVirtuals;
-
-		const mongooseSchema = new mongoose.Schema<T["_output"]>(
-			{},
-			{ strict: false }
-		);
-
-		mongooseSchema.pre("validate", function (next) {
-			const doc = schema.parse(this);
-			this.set(doc);
-			next();
-		});
-
-		mongooseSchema.pre("init", function () {
-			const result = schema.safeParse(this);
-
-			if (!result.success) {
-				console.warn(
-					"WARNING: Stored document failed to parse - you need a migration"
-				);
-				console.warn(result.error);
-			}
-		});
+		type CompiledVirtuals = string extends keyof V
+			? {}
+			: Pick<MutableVirtuals, MutableKeys> & ReadonlyVirtuals;
 
 		if (input.virtuals) {
 			Object.entries(input.virtuals).forEach(([name, input]) => {
@@ -164,19 +177,22 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 		}
 
 		try {
-			mongoose.deleteModel(input.collection);
+			mongoose.deleteModel(modelName);
 		} catch {}
 
 		type NewDocType = HydratedDocument<
 			z.infer<T>,
-			I["methods"] & CompiledVirtuals
+			(string extends keyof I["methods"] ? {} : I["methods"]) & CompiledVirtuals
 		>;
-		type Methods = {
-			[K in keyof I["methods"]]: (
-				this: NewDocType,
-				...args: Parameters<M[K]>
-			) => ReturnType<M[K]>;
-		};
+		type testing = keyof I["methods"];
+		type Methods = string extends keyof I["methods"]
+			? {}
+			: {
+					[K in keyof I["methods"]]: (
+						this: NewDocType,
+						...args: Parameters<M[K]>
+					) => ReturnType<M[K]>;
+			  };
 		// type Methods = {
 		// 	[K in keyof I["methods"]]: (
 		// 		this: NewDocType,
@@ -205,8 +221,7 @@ function enhanceModel<T extends z.ZodTypeAny>(schema: T) {
 			) => MappedType<ReturnType<S[K]>, Document, NewDocType>;
 		};
 
-		return mongoose.model(input.collection, mongooseSchema) as NewModel &
-			Statics;
+		return mongoose.model(modelName, mongooseSchema) as NewModel & Statics;
 	};
 }
 
@@ -256,3 +271,5 @@ type Indexes = (
 	| Record<string, IndexDirection>
 	| [Record<string, IndexDirection>, IndexOptions]
 )[];
+
+type Test = string extends "this" | "that" ? true : false;
