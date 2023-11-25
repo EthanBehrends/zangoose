@@ -284,4 +284,25 @@ describe("Schema construction", async () => {
 			const commenters = await Person.find({ _id: { $in: post.commenters } });
 		}
 	});
+
+	describe("Collection name", async () => {
+		test("Default collection name", async () => {
+			const DefaultTest = model("DefaultTest", z.object({}));
+
+			expect(DefaultTest.collection.name).toBe("default_test");
+		});
+		test("Custom collection name", async () => {
+			const CustomUser = model(
+				"CustomUser",
+				z.object({
+					firstName: z.string(),
+					lastName: z.string().optional(),
+				})
+			).with({
+				collection: "custom-users",
+			});
+
+			expect(CustomUser.collection.name).toBe("custom-users");
+		});
+	});
 });

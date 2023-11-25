@@ -34,6 +34,16 @@ export function model<T extends z.ZodTypeAny>(modelName: string, schema: T) {
 		}
 	});
 
+	mongooseSchema.set(
+		"collection",
+		modelName
+			.replace(/[A-Z]/g, " $&")
+			.trim()
+			.split(/[-_ ]/g)
+			.join("_")
+			.toLowerCase()
+	);
+
 	type DocType = z.infer<T>;
 	type Document = HydratedDocument<DocType>;
 	type UnenhancedModel = Model<z.input<T>, object, object, object, Document>;
@@ -66,7 +76,7 @@ function enhanceModel<T extends z.ZodTypeAny, S extends mongoose.Schema<T>>(
 		Methods extends Record<string, (this: Document, ...rest: any[]) => any>,
 		Virtuals extends Record<string, VirtualDef>
 	> = {
-		collection: string;
+		collection?: string;
 		statics?: Statics;
 		methods?: Methods;
 		virtuals?: Virtuals;
@@ -174,6 +184,10 @@ function enhanceModel<T extends z.ZodTypeAny, S extends mongoose.Schema<T>>(
 					}
 				});
 			});
+		}
+
+		if (input.collection) {
+			mongooseSchema.set("collection", input.collection);
 		}
 
 		try {
